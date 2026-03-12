@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html>
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>VRF Debugger</title>
+ <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="{themeclass}">
+
+<div class="hero">
+ <h1>VRF Debugger</h1>
+ <p>Test the on-chain verifiable random function beacon API</p>
+</div>
+
+<!-- Latest Beacon (live) -->
+<div class="card" id="card-latest">
+ <h2>Latest Beacon <span class="status loading" id="status-latest">connecting...</span></h2>
+ <div class="live-beacon">
+  <div class="live-dot" id="live-dot"></div>
+  <div>
+   <div>Height: <span class="mono" id="latest-height">-</span></div>
+   <div>Proposer: <span class="mono" id="latest-proposer">-</span></div>
+  </div>
+ </div>
+ <div style="color:var(--muted);font-size:0.82em;margin-top:4px;">Beacon:</div>
+ <div class="mono" id="latest-beacon" style="color:var(--result-str);word-break:break-all;font-size:0.82em;">-</div>
+ <div class="beacon-viz" id="latest-viz"></div>
+ <button onclick="fetchLatest()">Refresh</button>
+ <button class="secondary" onclick="toggleAutoRefresh()" id="btn-auto">Auto-refresh: OFF</button>
+</div>
+
+<!-- Commit-Reveal Random Number -->
+<div class="card">
+ <h2>Commit-Reveal Random</h2>
+ <p style="color:var(--muted);font-size:0.85em;margin-bottom:10px;">
+  Lock in your range now, then wait for a future block to determine the result.
+  Nobody can know the outcome until the block is produced, not even validators.
+ </p>
+ <div id="cr-setup">
+  <div class="row">
+   <div>
+    <label>Min</label>
+    <input type="number" id="inp-cr-min" value="1">
+   </div>
+   <div>
+    <label>Max</label>
+    <input type="number" id="inp-cr-max" value="100">
+   </div>
+   <div>
+    <label>Wait (blocks)</label>
+    <input type="number" id="inp-cr-wait" value="2" min="1" max="50">
+   </div>
+   <div>
+    <label>&nbsp;</label>
+    <button onclick="commitReveal()" style="width:100%">Commit</button>
+   </div>
+  </div>
+ </div>
+ <div id="cr-pending" style="display:none;margin-top:14px;text-align:center;">
+  <div style="color:var(--status-loading-fg);font-size:0.9em;font-weight:600;" id="cr-status">Committed! Waiting for block...</div>
+  <div style="margin-top:10px;">
+   <div style="background:var(--progress-bg);border-radius:4px;height:8px;overflow:hidden;">
+    <div id="cr-progress-bar" style="background:var(--progress-fg);height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
+   </div>
+   <div id="cr-progress-text" style="color:var(--dim);font-size:0.75em;margin-top:4px;"></div>
+  </div>
+  <div style="margin-top:8px;color:var(--dim);font-size:0.78em;font-family:'SFMono-Regular',Consolas,monospace;" id="cr-commit-info"></div>
+ </div>
+ <div id="cr-result" style="display:none;margin-top:14px;text-align:center;">
+  <div id="cr-number" class="clr-ok" style="font-size:3em;font-weight:700;line-height:1.2;"></div>
+  <div id="cr-details" style="color:var(--dim);font-size:0.75em;margin-top:6px;font-family:'SFMono-Regular',Consolas,monospace;word-break:break-all;"></div>
+  <button class="secondary" onclick="resetCommitReveal()" style="margin-top:10px;">New Round</button>
+ </div>
+</div>
+
+<!-- Over/Under Game -->
+<div class="card">
+ <h2>Over/Under</h2>
+ <p style="color:var(--muted);font-size:0.85em;margin-bottom:10px;">
+  Pick a number and guess whether the on-chain result will be over or under.
+  Your guess is locked in before the block that determines the outcome.
+ </p>
+ <div id="ou-setup">
+  <div style="margin-bottom:12px;">
+   <label>Threshold (1-99)</label>
+   <input type="number" id="inp-ou-threshold" value="50" min="1" max="99" style="max-width:120px;">
+   <span style="color:var(--dim);font-size:0.8em;margin-left:8px;">Result will be 1-100</span>
+  </div>
+  <div style="display:flex;gap:12px;">
+   <button onclick="playOverUnder('under')" style="flex:1;font-size:1.1em;padding:12px;">Under</button>
+   <button onclick="playOverUnder('over')" style="flex:1;font-size:1.1em;padding:12px;">Over</button>
+  </div>
+ </div>
+ <div id="ou-pending" style="display:none;margin-top:14px;text-align:center;">
+  <div style="color:var(--status-loading-fg);font-size:0.9em;font-weight:600;" id="ou-status">Locked in! Waiting...</div>
+  <div style="margin-top:10px;">
+   <div style="background:var(--progress-bg);border-radius:4px;height:8px;overflow:hidden;">
+    <div id="ou-progress-bar" style="background:var(--progress-fg);height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
+   </div>
+   <div id="ou-progress-text" style="color:var(--dim);font-size:0.75em;margin-top:4px;"></div>
+  </div>
+  <div style="margin-top:8px;color:var(--dim);font-size:0.78em;font-family:'SFMono-Regular',Consolas,monospace;" id="ou-locked-info"></div>
+ </div>
+ <div id="ou-result" style="display:none;margin-top:14px;text-align:center;">
+  <div id="ou-result-text" style="font-size:1.8em;font-weight:700;line-height:1.2;"></div>
+  <div id="ou-result-number" style="font-size:3em;font-weight:700;line-height:1.2;margin-top:4px;"></div>
+  <div id="ou-result-summary" style="color:var(--muted);font-size:0.9em;margin-top:6px;"></div>
+  <div id="ou-result-details" style="color:var(--dim);font-size:0.75em;margin-top:6px;font-family:'SFMono-Regular',Consolas,monospace;word-break:break-all;"></div>
+  <button class="secondary" onclick="resetOverUnder()" style="margin-top:10px;">Play Again</button>
+ </div>
+</div>
+
+<!-- On-Chain Over/Under (Smart Contract) -->
+<div class="card" id="card-onchain">
+ <h2>On-Chain Over/Under</h2>
+ <p style="color:var(--muted);font-size:0.85em;margin-bottom:10px;">
+  Play Over/Under with a real smart contract. Your guess is committed on-chain via wallet transaction,
+  and the VRF beacon determines the outcome. Fully trustless and verifiable.
+  <a href="https://github.com/EpixZone/vrf-contracts" target="_blank" style="color:var(--accent);text-decoration:none;">View source on GitHub</a>
+ </p>
+ <!-- Disconnected -->
+ <div id="oc-disconnected">
+  <button class="wallet" onclick="ocConnect()">Connect Wallet</button>
+  <span id="oc-wallet-error" style="color:var(--status-fail-fg);font-size:0.82em;margin-left:10px;"></span>
+ </div>
+ <!-- Connected: setup -->
+ <div id="oc-setup" style="display:none;">
+  <div style="margin-bottom:10px;">
+   <span class="wallet-badge" id="oc-address"></span>
+   <button class="secondary" onclick="ocDisconnect()" style="margin-left:8px;margin-top:0;padding:4px 10px;font-size:0.78em;">Disconnect</button>
+  </div>
+  <div style="margin-bottom:12px;">
+   <label>Threshold (1-99)</label>
+   <input type="number" id="inp-oc-threshold" value="50" min="1" max="99" style="max-width:120px;">
+   <span style="color:var(--dim);font-size:0.8em;margin-left:8px;">Result will be 1-100</span>
+  </div>
+  <div style="display:flex;gap:12px;">
+   <button onclick="ocCommit(false)" style="flex:1;font-size:1.1em;padding:12px;">Under</button>
+   <button onclick="ocCommit(true)" style="flex:1;font-size:1.1em;padding:12px;">Over</button>
+  </div>
+ </div>
+ <!-- Committing tx -->
+ <div id="oc-committing" style="display:none;margin-top:14px;text-align:center;">
+  <div style="color:var(--status-loading-fg);font-size:0.9em;font-weight:600;">Sending commit transaction...</div>
+  <div style="color:var(--dim);font-size:0.78em;margin-top:6px;">Confirm in your wallet</div>
+ </div>
+ <!-- Committed: waiting for blocks -->
+ <div id="oc-pending" style="display:none;margin-top:14px;text-align:center;">
+  <div style="color:var(--status-loading-fg);font-size:0.9em;font-weight:600;" id="oc-pending-status">Committed on-chain! Waiting for reveal block...</div>
+  <div style="margin-top:10px;">
+   <div style="background:var(--progress-bg);border-radius:4px;height:8px;overflow:hidden;">
+    <div id="oc-progress-bar" style="background:var(--progress-fg);height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
+   </div>
+   <div id="oc-progress-text" style="color:var(--dim);font-size:0.75em;margin-top:4px;"></div>
+  </div>
+  <div id="oc-locked-info" style="margin-top:8px;color:var(--dim);font-size:0.78em;font-family:'SFMono-Regular',Consolas,monospace;"></div>
+  <div id="oc-commit-tx" style="margin-top:6px;"></div>
+  <button onclick="ocReveal()" id="oc-reveal-btn" style="display:none;margin-top:10px;">Reveal Result</button>
+ </div>
+ <!-- Revealing tx -->
+ <div id="oc-revealing" style="display:none;margin-top:14px;text-align:center;">
+  <div style="color:var(--status-loading-fg);font-size:0.9em;font-weight:600;">Sending reveal transaction...</div>
+  <div style="color:var(--dim);font-size:0.78em;margin-top:6px;">Confirm in your wallet</div>
+ </div>
+ <!-- Result -->
+ <div id="oc-result" style="display:none;margin-top:14px;text-align:center;">
+  <div id="oc-result-text" style="font-size:1.8em;font-weight:700;line-height:1.2;"></div>
+  <div id="oc-result-number" style="font-size:3em;font-weight:700;line-height:1.2;margin-top:4px;"></div>
+  <div id="oc-result-summary" style="color:var(--muted);font-size:0.9em;margin-top:6px;"></div>
+  <div id="oc-result-details" style="color:var(--dim);font-size:0.75em;margin-top:6px;font-family:'SFMono-Regular',Consolas,monospace;word-break:break-all;"></div>
+  <div id="oc-result-txs" style="margin-top:8px;"></div>
+  <button class="secondary" onclick="ocReset()" style="margin-top:10px;">Play Again</button>
+ </div>
+</div>
+
+<h2 style="color:var(--dim);font-size:0.95em;margin:24px 0 12px;border-top:1px solid var(--border);padding-top:20px;">VRF Debug</h2>
+
+<!-- Get Beacon by Height -->
+<div class="card">
+ <h2>Get Beacon by Height</h2>
+ <label>Block Height</label>
+ <div class="row">
+  <div><input type="number" id="inp-height" placeholder="e.g. 1000" min="1"></div>
+  <div><button onclick="fetchByHeight()">Fetch</button></div>
+ </div>
+ <div class="result" id="res-height"></div>
+</div>
+
+<!-- Derive Random -->
+<div class="card">
+ <h2>Derive Random Values</h2>
+ <p style="color:var(--muted);font-size:0.85em;margin-bottom:10px;">
+  Deterministic: same beacon + seed + count always produces the same output.
+ </p>
+ <div class="row">
+  <div>
+   <label>Block Height (0 = latest)</label>
+   <input type="number" id="inp-derive-height" value="0" min="0">
+  </div>
+  <div>
+   <label>Seed</label>
+   <input type="text" id="inp-derive-seed" placeholder="e.g. my-raffle-2026">
+  </div>
+  <div>
+   <label>Count (1-100)</label>
+   <input type="number" id="inp-derive-count" value="5" min="1" max="100">
+  </div>
+ </div>
+ <button onclick="fetchDerive()">Derive</button>
+ <div class="result" id="res-derive"></div>
+</div>
+
+<!-- Multi-Block Beacon -->
+<div class="card">
+ <h2>Multi-Block Beacon</h2>
+ <p style="color:var(--muted);font-size:0.85em;margin-bottom:10px;">
+  Combines beacons from N consecutive blocks. All block proposers contribute entropy.
+ </p>
+ <div class="row">
+  <div>
+   <label>End Height</label>
+   <input type="number" id="inp-multi-end" placeholder="e.g. 1000" min="1">
+  </div>
+  <div>
+   <label>Blocks (1-256)</label>
+   <input type="number" id="inp-multi-blocks" value="25" min="1" max="256">
+  </div>
+ </div>
+ <button onclick="fetchMulti()">Combine</button>
+ <div class="result" id="res-multi"></div>
+</div>
+
+<!-- Cache Management -->
+<div class="card">
+ <h2>Cache</h2>
+ <button class="danger" onclick="clearCache()">Clear VRF Cache</button>
+ <span id="cache-msg" style="color:var(--muted);font-size:0.85em;margin-left:10px;"></span>
+</div>
+
+<footer>VRF Debugger &middot; Powered by EpixNet + EpixChain</footer>
+
+<script src="https://cdn.jsdelivr.net/gh/EpixZone/epixframe@v1.0.0/dist/epixframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/EpixZone/epixkit@3b0fb50/epixkit.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script>
+var page = epixFrame
+var autoInterval = null
+
+function cmd(method, params) {
+ return page.cmd(method, params)
+}
+
+function show(el, data) {
+ el.classList.add("visible")
+ if (data && data.error) {
+  el.innerHTML = '<span class="err">' + escHtml(data.error) + '</span>'
+ } else {
+  el.innerHTML = formatJson(data)
+ }
+}
+
+function setClr(el, cls) {
+ el.className = el.className.replace(/\bclr-\w+/g, "")
+ if (cls) el.classList.add(cls)
+}
+
+function escHtml(s) {
+ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function formatJson(obj) {
+ var s = JSON.stringify(obj, null, 2)
+ return s.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:')
+         .replace(/: "([^"]*)"/g, ': <span class="str">"$1"</span>')
+         .replace(/: (\d+)/g, ': <span class="num">$1</span>')
+}
+
+function renderViz(containerId, hexStr) {
+ var el = document.getElementById(containerId)
+ el.innerHTML = ""
+ if (!hexStr || hexStr === "-") return
+ var chars = hexStr.substring(0, 64)
+ for (var i = 0; i < chars.length; i += 2) {
+  var val = parseInt(chars.substr(i, 2), 16)
+  var bar = document.createElement("div")
+  bar.className = "bar"
+  bar.style.height = Math.max(4, Math.round((val / 255) * 32)) + "px"
+  bar.style.background = "hsl(" + (Math.round((val / 255) * 220) + 180) + ", 60%, 55%)"
+  el.appendChild(bar)
+ }
+}
+
+async function fetchLatest() {
+ var st = document.getElementById("status-latest")
+ st.className = "status loading"; st.textContent = "loading..."
+ var res = await cmd("vrfLatestBeacon", [])
+ if (res && !res.error) {
+  st.className = "status ok"; st.textContent = "ok"
+  document.getElementById("latest-height").textContent = res.height
+  document.getElementById("latest-proposer").textContent = res.proposer
+  document.getElementById("latest-beacon").textContent = res.beacon
+  renderViz("latest-viz", res.beacon)
+ } else {
+  st.className = "status fail"; st.textContent = "error"
+  document.getElementById("latest-beacon").textContent = (res && res.error) || "Failed"
+ }
+}
+
+function toggleAutoRefresh() {
+ var btn = document.getElementById("btn-auto")
+ if (autoInterval) {
+  clearInterval(autoInterval)
+  autoInterval = null
+  btn.textContent = "Auto-refresh: OFF"
+  document.getElementById("live-dot").style.animationPlayState = "paused"
+ } else {
+  fetchLatest()
+  autoInterval = setInterval(fetchLatest, 6000)
+  btn.textContent = "Auto-refresh: ON"
+  document.getElementById("live-dot").style.animationPlayState = "running"
+ }
+}
+
+async function fetchByHeight() {
+ var h = parseInt(document.getElementById("inp-height").value)
+ var el = document.getElementById("res-height")
+ if (!h || h <= 0) { show(el, {error: "Enter a valid block height"}); return }
+ show(el, {status: "loading..."})
+ var res = await cmd("vrfGetBeacon", [h])
+ show(el, res)
+}
+
+async function fetchDerive() {
+ var h = parseInt(document.getElementById("inp-derive-height").value) || 0
+ var seed = document.getElementById("inp-derive-seed").value
+ var count = parseInt(document.getElementById("inp-derive-count").value) || 1
+ var el = document.getElementById("res-derive")
+ show(el, {status: "loading..."})
+ var res = await cmd("vrfDeriveRandom", [h, seed, count])
+ show(el, res)
+}
+
+async function fetchMulti() {
+ var endH = parseInt(document.getElementById("inp-multi-end").value)
+ var blocks = parseInt(document.getElementById("inp-multi-blocks").value) || 25
+ var el = document.getElementById("res-multi")
+ if (!endH || endH <= 0) { show(el, {error: "Enter a valid end height"}); return }
+ show(el, {status: "loading..."})
+ var res = await cmd("vrfMultiBlockBeacon", [endH, blocks])
+ show(el, res)
+}
+
+async function clearCache() {
+ var res = await cmd("vrfInvalidateCache", [])
+ var msg = document.getElementById("cache-msg")
+ msg.textContent = (res === "ok") ? "Cache cleared!" : "Error: " + JSON.stringify(res)
+ setTimeout(function() { msg.textContent = "" }, 3000)
+}
+
+// --- Commit-Reveal ---
+var crPollTimer = null
+
+function resetCommitReveal() {
+ if (crPollTimer) { clearInterval(crPollTimer); crPollTimer = null }
+ document.getElementById("cr-setup").style.display = "block"
+ document.getElementById("cr-pending").style.display = "none"
+ document.getElementById("cr-result").style.display = "none"
+}
+
+async function commitReveal() {
+ var min = parseInt(document.getElementById("inp-cr-min").value)
+ var max = parseInt(document.getElementById("inp-cr-max").value)
+ var wait = parseInt(document.getElementById("inp-cr-wait").value) || 2
+ if (isNaN(min) || isNaN(max) || min >= max) {
+  document.getElementById("cr-result").style.display = "block"
+  document.getElementById("cr-setup").style.display = "none"
+  document.getElementById("cr-pending").style.display = "none"
+  document.getElementById("cr-number").textContent = "?"
+  setClr(document.getElementById("cr-number"), "clr-fail")
+  document.getElementById("cr-details").textContent = "Min must be less than Max"
+  return
+ }
+ if (wait < 1) wait = 1
+ if (wait > 50) wait = 50
+
+ // Get current latest height
+ var latest = await cmd("vrfLatestBeacon", [])
+ if (!latest || latest.error) {
+  document.getElementById("cr-result").style.display = "block"
+  document.getElementById("cr-setup").style.display = "none"
+  document.getElementById("cr-pending").style.display = "none"
+  document.getElementById("cr-number").textContent = "?"
+  setClr(document.getElementById("cr-number"), "clr-fail")
+  document.getElementById("cr-details").textContent = (latest && latest.error) || "Failed to get current block"
+  return
+ }
+
+ var commitHeight = latest.height
+ var revealHeight = commitHeight + wait
+
+ // Show pending state
+ document.getElementById("cr-setup").style.display = "none"
+ document.getElementById("cr-pending").style.display = "block"
+ document.getElementById("cr-result").style.display = "none"
+ document.getElementById("cr-status").textContent = "Committed! Waiting for block " + revealHeight + "..."
+ document.getElementById("cr-commit-info").textContent =
+  "Range: " + min + "-" + max + " | Committed at block " + commitHeight + " | Reveal at block " + revealHeight
+ document.getElementById("cr-progress-bar").style.width = "0%"
+ document.getElementById("cr-progress-text").textContent = "Block " + commitHeight + " / " + revealHeight
+
+ // Poll for the reveal block
+ if (crPollTimer) clearInterval(crPollTimer)
+ crPollTimer = setInterval(async function() {
+  var check = await cmd("vrfLatestBeacon", [])
+  if (!check || check.error) return
+
+  var current = check.height
+  var elapsed = current - commitHeight
+  var pct = Math.min(100, Math.round((elapsed / wait) * 100))
+  document.getElementById("cr-progress-bar").style.width = pct + "%"
+  document.getElementById("cr-progress-text").textContent = "Block " + current + " / " + revealHeight
+
+  if (current >= revealHeight) {
+   clearInterval(crPollTimer)
+   crPollTimer = null
+   document.getElementById("cr-status").textContent = "Revealing..."
+   document.getElementById("cr-progress-bar").style.width = "100%"
+
+   // Fetch the beacon at reveal height
+   var beacon = await cmd("vrfGetBeacon", [revealHeight])
+   if (!beacon || beacon.error) {
+    document.getElementById("cr-pending").style.display = "none"
+    document.getElementById("cr-result").style.display = "block"
+    document.getElementById("cr-number").textContent = "?"
+    setClr(document.getElementById("cr-number"), "clr-fail")
+    document.getElementById("cr-details").textContent = (beacon && beacon.error) || "Failed to fetch reveal beacon"
+    return
+   }
+
+   // Compute the number from the beacon
+   var hex8 = beacon.beacon.substring(0, 8)
+   var raw = parseInt(hex8, 16)
+   var range = max - min + 1
+   var number = min + (raw % range)
+
+   document.getElementById("cr-pending").style.display = "none"
+   document.getElementById("cr-result").style.display = "block"
+   document.getElementById("cr-number").textContent = number
+   setClr(document.getElementById("cr-number"), "clr-ok")
+   document.getElementById("cr-details").textContent =
+    "Committed at block " + commitHeight + " | Revealed at block " + revealHeight + "\n" +
+    "beacon: " + beacon.beacon.substring(0, 16) + "... | raw: " + raw + " % " + range + " + " + min
+  }
+ }, 3000)
+}
+
+// --- Over/Under Game ---
+var ouPollTimer = null
+
+function resetOverUnder() {
+ if (ouPollTimer) { clearInterval(ouPollTimer); ouPollTimer = null }
+ document.getElementById("ou-setup").style.display = "block"
+ document.getElementById("ou-pending").style.display = "none"
+ document.getElementById("ou-result").style.display = "none"
+}
+
+async function playOverUnder(guess) {
+ var threshold = parseInt(document.getElementById("inp-ou-threshold").value)
+ if (isNaN(threshold) || threshold < 1 || threshold > 99) {
+  document.getElementById("ou-result").style.display = "block"
+  document.getElementById("ou-setup").style.display = "none"
+  document.getElementById("ou-pending").style.display = "none"
+  document.getElementById("ou-result-text").textContent = ""
+  document.getElementById("ou-result-number").textContent = "?"
+  setClr(document.getElementById("ou-result-number"), "clr-fail")
+  document.getElementById("ou-result-summary").textContent = "Threshold must be 1-99"
+  document.getElementById("ou-result-details").textContent = ""
+  return
+ }
+
+ var latest = await cmd("vrfLatestBeacon", [])
+ if (!latest || latest.error) {
+  document.getElementById("ou-result").style.display = "block"
+  document.getElementById("ou-setup").style.display = "none"
+  document.getElementById("ou-pending").style.display = "none"
+  document.getElementById("ou-result-text").textContent = ""
+  document.getElementById("ou-result-number").textContent = "?"
+  setClr(document.getElementById("ou-result-number"), "clr-fail")
+  document.getElementById("ou-result-summary").textContent = (latest && latest.error) || "Failed to get current block"
+  document.getElementById("ou-result-details").textContent = ""
+  return
+ }
+
+ var commitHeight = latest.height
+ var revealHeight = commitHeight + 2
+
+ document.getElementById("ou-setup").style.display = "none"
+ document.getElementById("ou-pending").style.display = "block"
+ document.getElementById("ou-result").style.display = "none"
+ document.getElementById("ou-status").textContent = "Locked in: " + guess.toUpperCase() + " " + threshold + "! Waiting for block " + revealHeight + "..."
+ document.getElementById("ou-locked-info").textContent =
+  "Your guess: " + guess.toUpperCase() + " " + threshold + " | Locked at block " + commitHeight + " | Reveal at block " + revealHeight
+ document.getElementById("ou-progress-bar").style.width = "0%"
+ document.getElementById("ou-progress-text").textContent = "Block " + commitHeight + " / " + revealHeight
+
+ if (ouPollTimer) clearInterval(ouPollTimer)
+ ouPollTimer = setInterval(async function() {
+  var check = await cmd("vrfLatestBeacon", [])
+  if (!check || check.error) return
+
+  var current = check.height
+  var elapsed = current - commitHeight
+  var pct = Math.min(100, Math.round((elapsed / 2) * 100))
+  document.getElementById("ou-progress-bar").style.width = pct + "%"
+  document.getElementById("ou-progress-text").textContent = "Block " + current + " / " + revealHeight
+
+  if (current >= revealHeight) {
+   clearInterval(ouPollTimer)
+   ouPollTimer = null
+
+   var beacon = await cmd("vrfGetBeacon", [revealHeight])
+   if (!beacon || beacon.error) {
+    document.getElementById("ou-pending").style.display = "none"
+    document.getElementById("ou-result").style.display = "block"
+    document.getElementById("ou-result-text").textContent = ""
+    document.getElementById("ou-result-number").textContent = "?"
+    setClr(document.getElementById("ou-result-number"), "clr-fail")
+    document.getElementById("ou-result-summary").textContent = (beacon && beacon.error) || "Failed to fetch beacon"
+    document.getElementById("ou-result-details").textContent = ""
+    return
+   }
+
+   var hex8 = beacon.beacon.substring(0, 8)
+   var raw = parseInt(hex8, 16)
+   var number = 1 + (raw % 100)
+
+   var win = (guess === "under" && number < threshold) || (guess === "over" && number > threshold)
+   var tie = (number === threshold)
+
+   document.getElementById("ou-pending").style.display = "none"
+   document.getElementById("ou-result").style.display = "block"
+   document.getElementById("ou-result-number").textContent = number
+   if (tie) {
+    document.getElementById("ou-result-text").textContent = "PUSH"
+    setClr(document.getElementById("ou-result-text"), "clr-warn")
+    setClr(document.getElementById("ou-result-number"), "clr-warn")
+    document.getElementById("ou-result-summary").textContent = "Landed exactly on " + threshold + "!"
+   } else if (win) {
+    document.getElementById("ou-result-text").textContent = "CORRECT!"
+    setClr(document.getElementById("ou-result-text"), "clr-ok")
+    setClr(document.getElementById("ou-result-number"), "clr-ok")
+    document.getElementById("ou-result-summary").textContent =
+     "You guessed " + guess.toUpperCase() + " " + threshold + " and the result was " + number
+   } else {
+    document.getElementById("ou-result-text").textContent = "WRONG"
+    setClr(document.getElementById("ou-result-text"), "clr-fail")
+    setClr(document.getElementById("ou-result-number"), "clr-fail")
+    document.getElementById("ou-result-summary").textContent =
+     "You guessed " + guess.toUpperCase() + " " + threshold + " and the result was " + number
+   }
+   document.getElementById("ou-result-details").textContent =
+    "Locked at block " + commitHeight + " | Revealed at block " + revealHeight + "\n" +
+    "beacon: " + beacon.beacon.substring(0, 16) + "..."
+  }
+ }, 3000)
+}
+
+// Initial fetch once websocket is open (auto-refresh on by default)
+page.on('openWebsocket', function() {
+ toggleAutoRefresh()
+})
+
+// =============================================
+// On-Chain Over/Under — Wallet + Smart Contract
+// =============================================
+
+var COINFLIP_ADDRESS = "0xD0793a2a11Fa3600Ec941115937FB8E259cfdbf1"
+var COINFLIP_ABI = [{"type":"function","name":"commit","inputs":[{"name":"guessOver","type":"bool"},{"name":"threshold","type":"uint64"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"reveal","inputs":[{"name":"player","type":"address"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"getGame","inputs":[{"name":"player","type":"address"}],"outputs":[{"name":"","type":"tuple","components":[{"name":"active","type":"bool"},{"name":"guessOver","type":"bool"},{"name":"threshold","type":"uint64"},{"name":"commitBlock","type":"uint64"},{"name":"revealBlock","type":"uint64"},{"name":"gameId","type":"uint256"}]}],"stateMutability":"view"},{"type":"function","name":"getGameResult","inputs":[{"name":"player","type":"address"},{"name":"gameId","type":"uint256"}],"outputs":[{"name":"","type":"tuple","components":[{"name":"guessOver","type":"bool"},{"name":"threshold","type":"uint64"},{"name":"result","type":"uint64"},{"name":"won","type":"bool"},{"name":"beacon","type":"bytes32"},{"name":"revealBlock","type":"uint64"}]}],"stateMutability":"view"},{"type":"function","name":"gameCount","inputs":[{"name":"","type":"address"}],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"},{"type":"event","name":"GameCommitted","inputs":[{"name":"player","type":"address","indexed":true},{"name":"gameId","type":"uint256","indexed":true},{"name":"guessOver","type":"bool","indexed":false},{"name":"threshold","type":"uint64","indexed":false},{"name":"commitBlock","type":"uint64","indexed":false},{"name":"revealBlock","type":"uint64","indexed":false}]},{"type":"event","name":"GameRevealed","inputs":[{"name":"player","type":"address","indexed":true},{"name":"gameId","type":"uint256","indexed":true},{"name":"result","type":"uint64","indexed":false},{"name":"won","type":"bool","indexed":false},{"name":"beacon","type":"bytes32","indexed":false}]}]
+
+var wallet = {
+ provider: null,
+ signer: null,
+ contract: null,
+ address: null
+}
+
+async function ocSetupWallet(result) {
+ wallet.provider = new ethers.BrowserProvider(result.provider)
+ wallet.signer = await wallet.provider.getSigner()
+ wallet.address = result.address
+ wallet.contract = new ethers.Contract(COINFLIP_ADDRESS, COINFLIP_ABI, wallet.signer)
+
+ var short = wallet.address.substring(0, 6) + "..." + wallet.address.substring(38)
+ document.getElementById("oc-address").textContent = result.walletName + " " + short
+
+ var game = await wallet.contract.getGame(wallet.address)
+ if (game.active) {
+  ocShowPending(game)
+ } else {
+  ocShowSection("oc-setup")
+ }
+}
+
+// Init EpixKit with chain URLs from EpixNet config
+var chainExplorerUrl = "https://scan.epix.zone"
+page.chainEvmRpcUrl().then(function(evmRpc) {
+ page.chainBlockExplorerUrl().then(function(explorer) {
+  chainExplorerUrl = explorer || chainExplorerUrl
+  EpixKit.init({
+   chainId: "0x77D",
+   chainName: "Epix Testnet",
+   nativeCurrency: { name: "EPIX", symbol: "EPIX", decimals: 18 },
+   rpcUrls: [evmRpc || "https://evmrpc.epix.zone"],
+   blockExplorerUrls: [chainExplorerUrl],
+   onReconnect: ocSetupWallet
+  })
+ })
+})
+
+function ocShowSection(id) {
+ ["oc-disconnected","oc-setup","oc-committing","oc-pending","oc-revealing","oc-result"].forEach(function(s) {
+  document.getElementById(s).style.display = (s === id) ? "block" : "none"
+ })
+}
+
+async function ocConnect() {
+ var errEl = document.getElementById("oc-wallet-error")
+ errEl.textContent = ""
+
+ if (typeof ethers === "undefined") {
+  errEl.textContent = "ethers.js not loaded yet, please wait a moment and try again"
+  return
+ }
+
+ try {
+  await ocSetupWallet(await EpixKit.connect())
+ } catch (err) {
+  if (err.message !== "User cancelled" && err.message !== "No wallet detected") {
+   errEl.textContent = err.message || "Connection failed"
+  }
+ }
+}
+
+function ocDisconnect() {
+ EpixKit.disconnect()
+ wallet.provider = null
+ wallet.signer = null
+ wallet.contract = null
+ wallet.address = null
+ ocShowSection("oc-disconnected")
+}
+
+function ocReset() {
+ if (ocPollTimer) { clearInterval(ocPollTimer); ocPollTimer = null }
+ if (wallet.address) {
+  ocShowSection("oc-setup")
+ } else {
+  ocShowSection("oc-disconnected")
+ }
+}
+
+async function ocCommit(guessOver) {
+ var threshold = parseInt(document.getElementById("inp-oc-threshold").value)
+ if (isNaN(threshold) || threshold < 1 || threshold > 99) {
+  document.getElementById("oc-wallet-error").textContent = "Threshold must be 1-99"
+  return
+ }
+
+ ocShowSection("oc-committing")
+
+ try {
+  var tx = await wallet.contract.commit(guessOver, threshold)
+  // Show pending while we wait for tx to be mined
+  document.getElementById("oc-pending-status").textContent = "Transaction sent! Waiting for confirmation..."
+  document.getElementById("oc-locked-info").textContent =
+   "Guess: " + (guessOver ? "OVER" : "UNDER") + " " + threshold
+  document.getElementById("oc-commit-tx").innerHTML =
+   '<a class="tx-link" href="' + chainExplorerUrl + '/tx/' + tx.hash + '" target="_blank">' + tx.hash.substring(0, 18) + '...</a>'
+  document.getElementById("oc-progress-bar").style.width = "0%"
+  document.getElementById("oc-progress-text").textContent = "Confirming..."
+  document.getElementById("oc-reveal-btn").style.display = "none"
+  ocShowSection("oc-pending")
+
+  await tx.wait()
+
+  // Now read game state from contract
+  var game = await wallet.contract.getGame(wallet.address)
+  if (game.active) {
+   ocShowPending(game)
+  }
+ } catch (err) {
+  ocShowSection("oc-setup")
+  document.getElementById("oc-wallet-error").textContent = err.reason || err.message || "Transaction failed"
+ }
+}
+
+var ocPollTimer = null
+
+function ocShowPending(game) {
+ var guessStr = game.guessOver ? "OVER" : "UNDER"
+ var commitBlock = Number(game.commitBlock)
+ var revealBlock = Number(game.revealBlock)
+ var threshold = Number(game.threshold)
+
+ document.getElementById("oc-pending-status").textContent =
+  "Committed on-chain! Waiting for block " + revealBlock + "..."
+ document.getElementById("oc-locked-info").textContent =
+  "Guess: " + guessStr + " " + threshold + " | Committed at block " + commitBlock + " | Reveal at block " + revealBlock
+ document.getElementById("oc-progress-bar").style.width = "0%"
+ document.getElementById("oc-progress-text").textContent = "Block " + commitBlock + " / " + revealBlock
+ document.getElementById("oc-reveal-btn").style.display = "none"
+ ocShowSection("oc-pending")
+
+ // Poll for reveal readiness
+ if (ocPollTimer) clearInterval(ocPollTimer)
+ ocPollTimer = setInterval(async function() {
+  try {
+   var blockNum = await wallet.provider.getBlockNumber()
+   var elapsed = blockNum - commitBlock
+   var total = revealBlock - commitBlock
+   var pct = Math.min(100, Math.round((elapsed / total) * 100))
+   document.getElementById("oc-progress-bar").style.width = pct + "%"
+   document.getElementById("oc-progress-text").textContent = "Block " + blockNum + " / " + revealBlock
+
+   if (blockNum >= revealBlock) {
+    clearInterval(ocPollTimer)
+    ocPollTimer = null
+    document.getElementById("oc-progress-bar").style.width = "100%"
+    document.getElementById("oc-pending-status").textContent = "Ready to reveal!"
+    document.getElementById("oc-reveal-btn").style.display = "inline-block"
+   }
+  } catch (e) {}
+ }, 3000)
+}
+
+async function ocReveal() {
+ ocShowSection("oc-revealing")
+
+ try {
+  var tx = await wallet.contract.reveal(wallet.address)
+  await tx.wait()
+
+  // Read game result
+  var count = await wallet.contract.gameCount(wallet.address)
+  var result = await wallet.contract.getGameResult(wallet.address, count)
+
+  var guessStr = result.guessOver ? "OVER" : "UNDER"
+  var threshold = Number(result.threshold)
+  var roll = Number(result.result)
+  var won = result.won
+  var isPush = (roll === threshold)
+
+  document.getElementById("oc-result-number").textContent = roll
+  if (isPush) {
+   document.getElementById("oc-result-text").textContent = "PUSH"
+   setClr(document.getElementById("oc-result-text"), "clr-warn")
+   setClr(document.getElementById("oc-result-number"), "clr-warn")
+   document.getElementById("oc-result-summary").textContent = "Landed exactly on " + threshold + "!"
+  } else if (won) {
+   document.getElementById("oc-result-text").textContent = "CORRECT!"
+   setClr(document.getElementById("oc-result-text"), "clr-ok")
+   setClr(document.getElementById("oc-result-number"), "clr-ok")
+   document.getElementById("oc-result-summary").textContent =
+    "You guessed " + guessStr + " " + threshold + " and the result was " + roll
+  } else {
+   document.getElementById("oc-result-text").textContent = "WRONG"
+   setClr(document.getElementById("oc-result-text"), "clr-fail")
+   setClr(document.getElementById("oc-result-number"), "clr-fail")
+   document.getElementById("oc-result-summary").textContent =
+    "You guessed " + guessStr + " " + threshold + " and the result was " + roll
+  }
+
+  document.getElementById("oc-result-details").textContent =
+   "Reveal block: " + Number(result.revealBlock) + " | beacon: " + result.beacon.substring(0, 18) + "..."
+  document.getElementById("oc-result-txs").innerHTML =
+   '<a class="tx-link" href="' + chainExplorerUrl + '/tx/' + tx.hash + '" target="_blank">Reveal tx: ' + tx.hash.substring(0, 18) + '...</a>'
+
+  ocShowSection("oc-result")
+ } catch (err) {
+  // Go back to pending if reveal fails
+  ocShowSection("oc-pending")
+  document.getElementById("oc-pending-status").textContent = "Reveal failed: " + (err.reason || err.message)
+  document.getElementById("oc-reveal-btn").style.display = "inline-block"
+ }
+}
+</script>
+
+</body>
+</html>

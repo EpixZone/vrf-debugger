@@ -1,0 +1,24 @@
+{
+ "address": "epix1k2332529z7kvtneswpure2ewakzrynm6uakrtu",
+ "address_index": 20670623,
+ "description": "VRF Beacon Debugger",
+ "epixnet_version": "0.0.2",
+ "files": {
+  "css/style.css": {
+   "sha512": "7d1d8d8e1957b1f085bbdd732cb874af3f9a9d08430282a238e4f6fd92f12c91",
+   "size": 5313
+  },
+  "index.html": {
+   "sha512": "9c4b879b1e3a40c2c98034ee7ee47675435dc3aed6a3a29c89976ceedb15b0b3",
+   "size": 35073
+  }
+ },
+ "ignore": "",
+ "inner_path": "content.json",
+ "modified": 1773274159,
+ "postmessage_nonce_security": true,
+ "signers_sign": "HIVH7NkmuDQIZ16G9kl0/yYqm6nQ9GBpyJjxp6feLc97SLNwgipuPRXzzz6xQ+GN8mNVSJvRiPiHgfLqo/5Udoo=",
+ "signs": {"epix1k2332529z7kvtneswpure2ewakzrynm6uakrtu": "HEoIfwXag/pUCTGRQcqJkFH4/Ei580lABwRQr2aJ3jvodTxSStouCz3qSBnAu0qbib6GtoQzf0j+5w5oVjqfdD0="},
+ "signs_required": 1,
+ "title": "VRF Debugger"
+}
