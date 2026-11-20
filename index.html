@@ -247,8 +247,12 @@
 var page = epixFrame
 var autoInterval = null
 
+// EpixFrame rejects when a command answers {error}; every caller here checks
+// res.error instead, so turn a rejection back into that shape.
 function cmd(method, params) {
- return page.cmd(method, params)
+ return page.cmd(method, params).catch(function(err) {
+  return (err && err.error) ? err : {error: (err && err.message) || String(err)}
+ })
 }
 
 function show(el, data) {
@@ -336,9 +340,15 @@ async function fetchDerive() {
  var seed = document.getElementById("inp-derive-seed").value
  var count = parseInt(document.getElementById("inp-derive-count").value) || 1
  var el = document.getElementById("res-derive")
+ if (count < 1 || count > 100) { show(el, {error: "Count must be between 1 and 100"}); return }
  show(el, {status: "loading..."})
- var res = await cmd("vrfDeriveRandom", [h, seed, count])
- show(el, res)
+ // vrfDeriveRandom takes the beacon hex itself, so look up the beacon for the
+ // height first (0 = latest).
+ var b = h > 0 ? await cmd("vrfGetBeacon", [h]) : await cmd("vrfLatestBeacon", [])
+ if (!b || b.error || !b.beacon) { show(el, {error: (b && b.error) || "Failed to get beacon"}); return }
+ var values = await cmd("vrfDeriveRandom", [b.beacon, seed, count])
+ if (!Array.isArray(values)) { show(el, {error: (values && values.error) || "Failed to derive values"}); return }
+ show(el, {height: b.height, beacon: b.beacon, values: values})
 }
 
 async function fetchMulti() {
@@ -575,7 +585,7 @@ page.on('openWebsocket', function() {
 // On-Chain Over/Under — Wallet + Smart Contract
 // =============================================
 
-var COINFLIP_ADDRESS = "0xD0793a2a11Fa3600Ec941115937FB8E259cfdbf1"
+var COINFLIP_ADDRESS = "0x9dA2082E0486A642864a7065dbcb0A9fca1E2B07"
 var COINFLIP_ABI = [{"type":"function","name":"commit","inputs":[{"name":"guessOver","type":"bool"},{"name":"threshold","type":"uint64"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"reveal","inputs":[{"name":"player","type":"address"}],"outputs":[],"stateMutability":"nonpayable"},{"type":"function","name":"getGame","inputs":[{"name":"player","type":"address"}],"outputs":[{"name":"","type":"tuple","components":[{"name":"active","type":"bool"},{"name":"guessOver","type":"bool"},{"name":"threshold","type":"uint64"},{"name":"commitBlock","type":"uint64"},{"name":"revealBlock","type":"uint64"},{"name":"gameId","type":"uint256"}]}],"stateMutability":"view"},{"type":"function","name":"getGameResult","inputs":[{"name":"player","type":"address"},{"name":"gameId","type":"uint256"}],"outputs":[{"name":"","type":"tuple","components":[{"name":"guessOver","type":"bool"},{"name":"threshold","type":"uint64"},{"name":"result","type":"uint64"},{"name":"won","type":"bool"},{"name":"beacon","type":"bytes32"},{"name":"revealBlock","type":"uint64"}]}],"stateMutability":"view"},{"type":"function","name":"gameCount","inputs":[{"name":"","type":"address"}],"outputs":[{"name":"","type":"uint256"}],"stateMutability":"view"},{"type":"event","name":"GameCommitted","inputs":[{"name":"player","type":"address","indexed":true},{"name":"gameId","type":"uint256","indexed":true},{"name":"guessOver","type":"bool","indexed":false},{"name":"threshold","type":"uint64","indexed":false},{"name":"commitBlock","type":"uint64","indexed":false},{"name":"revealBlock","type":"uint64","indexed":false}]},{"type":"event","name":"GameRevealed","inputs":[{"name":"player","type":"address","indexed":true},{"name":"gameId","type":"uint256","indexed":true},{"name":"result","type":"uint64","indexed":false},{"name":"won","type":"bool","indexed":false},{"name":"beacon","type":"bytes32","indexed":false}]}]
 
 var wallet = {
@@ -608,8 +618,8 @@ page.chainEvmRpcUrl().then(function(evmRpc) {
  page.chainBlockExplorerUrl().then(function(explorer) {
   chainExplorerUrl = explorer || chainExplorerUrl
   EpixKit.init({
-   chainId: "0x77D",
-   chainName: "Epix Testnet",
+   chainId: "0x77C",
+   chainName: "Epix",
    nativeCurrency: { name: "EPIX", symbol: "EPIX", decimals: 18 },
    rpcUrls: [evmRpc || "https://evmrpc.epix.zone"],
    blockExplorerUrls: [chainExplorerUrl],
